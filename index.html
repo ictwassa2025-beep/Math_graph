@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>آزمایشگاه گراف ریاضی</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:20px;
+ background:#101827;color:#fff;
+ font-family:Tahoma,sans-serif;
+}
+.container{max-width:1050px;margin:auto}
+h2{text-align:center;color:#5eead4}
+.panel{
+ background:#1e293b;padding:18px;
+ border-radius:14px;margin-bottom:16px;
+}
+.inputs{
+ display:grid;grid-template-columns:repeat(4,1fr);
+ gap:12px;
+}
+label{display:block;margin-bottom:8px;font-size:13px}
+input,select{
+ width:100%;padding:11px;border-radius:8px;
+ border:1px solid #475569;
+ background:#0f172a;color:white;
+ font-size:15px;
+}
+button{
+ padding:11px 16px;border:0;border-radius:8px;
+ background:#0d9488;color:white;
+ cursor:pointer;font-size:14px;margin:5px;
+}
+button:hover{background:#0f766e}
+.graph-box{
+ background:white;border-radius:14px;
+ padding:10px;overflow:hidden;
+}
+svg{width:100%;height:auto;display:block}
+.info{
+ background:#1e293b;padding:18px;
+ border-radius:14px;margin-top:16px;
+ line-height:2;
+}
+.answer{color:#5eead4;font-weight:bold}
+.step{
+ background:#334155;
+ padding:12px;border-radius:9px;
+ margin:10px 0;
+}
+.step b{color:#5eead4}
+.toolbar{margin-top:12px;text-align:center}
+.export{
+ display:grid;grid-template-columns:2fr 1fr;
+ gap:12px;align-items:end;
+}
+#solution{display:none}
+#solution h3{color:#5eead4}
+.small{color:#cbd5e1;font-size:13px}
+@media(max-width:600px){
+ .inputs{grid-template-columns:repeat(2,1fr)}
+ .export{grid-template-columns:1fr}
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h2>📐 آزمایشگاه تعاملی گراف ریاضی</h2>
+
+<div class="panel">
+<h3>تنظیمات گراف</h3>
+
+<div class="inputs">
+<div>
+<label>شروع X</label>
+<input id="xmin" type="number" value="0">
+</div>
+<div>
+<label>پایان X</label>
+<input id="xmax" type="number" value="4">
+</div>
+<div>
+<label>شروع Y</label>
+<input id="ymin" type="number" value="0">
+</div>
+<div>
+<label>پایان Y</label>
+<input id="ymax" type="number" value="2">
+</div>
+</div>
+
+<br>
+<label>نوع نمایش گراف</label>
+<select id="graphMode">
+<option value="auto">تشخیص خودکار</option>
+<option value="rectangle">مستطیل / مربع</option>
+<option value="horizontal">پاره‌خط افقی</option>
+<option value="vertical">پاره‌خط عمودی</option>
+<option value="point">نقطه</option>
+</select>
+
+<br><br>
+<button onclick="drawGraph()">ترسیم گراف و حل سؤال</button>
+<button onclick="resetGraph()">بازنشانی</button>
+
+<p class="small">
+در حالت تشخیص خودکار، برنامه شکل مناسب را خودش تشخیص می‌دهد.
+</p>
+</div>
+
+<div class="graph-box">
+<svg id="graph" viewBox="0 0 700 500"
+xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+
+<div class="toolbar">
+<button onclick="zoom(0.8)">بزرگ‌نمایی +</button>
+<button onclick="zoom(1.25)">کوچک‌نمایی −</button>
+</div>
+
+<!-- بخش ذخیره سازی -->
+<div class="panel">
+<h3>💾 ذخیره تصویر گراف</h3>
+
+<div class="export">
+<div>
+<label>نام فایل</label>
+<input id="filename" type="text" value="math_graph">
+</div>
+
+<div>
+<label>انتخاب فرمت</label>
+<select id="format">
+<option value="png">PNG</option>
+<option value="jpg">JPG</option>
+<option value="pdf">PDF</option>
+<option value="ico">ICO</option>
+</select>
+</div>
+</div>
+
+<br>
+<button onclick="exportGraph()">دانلود گراف</button>
+<p class="small">
+تصویر گراف با فرمت انتخاب‌شده ذخیره می‌شود.
+</p>
+</div>
+
+<!-- نتیجه و حل خودکار -->
+<div class="info" id="solution">
+
+<h3>📘 سؤال تولیدشده توسط برنامه</h3>
+<div id="question"></div>
+
+<hr>
+
+<h3>📝 حل مرحله‌به‌مرحله</h3>
+<div id="steps"></div>
+
+<hr>
+
+<h3>🎯 نتیجه نهایی</h3>
+<div id="finalAnswer" class="answer"></div>
+
+</div>
+
+</div>
+
+<script>
+
+const svg=document.getElementById("graph");
+let zoomLevel=1;
+let lastGraph=null;
+
+function getValues(){
+ return {
+  a:Number(document.getElementById("xmin").value),
+  b:Number(document.getElementById("xmax").value),
+  c:Number(document.getElementById("ymin").value),
+  d:Number(document.getElementById("ymax").value)
+ };
+}
+
+function fa(n){
+ return Number(n.toFixed(3)).toLocaleString("en-US");
+}
+
+function determineShape(a,b,c,d,mode){
+
+ if(mode==="auto"){
+  if(a===b && c===d)return "point";
+  if(a===b)return "vertical";
+  if(c===d)return "horizontal";
+  return "rectangle";
+ }
+
+ return mode;
+}
+
+function shapeName(type,a,b,c,d){
+ if(type==="point")return "یک نقطه";
+ if(type==="horizontal")return "پاره‌خط افقی";
+ if(type==="vertical")return "پاره‌خط عمودی";
+
+ if(type==="rectangle"){
+  return (Math.abs(b-a)===Math.abs(d-c))
+   ?"مربع":"مستطیل";
+ }
+
+ return "شکل انتخاب‌شده";
+}
+
+function drawGraph(){
+
+ const {a,b,c,d}=getValues();
+
+ if(![a,b,c,d].every(Number.isFinite)){
+  alert("لطفاً تمام اعداد را وارد کنید.");
+  return;
+ }
+
+ if(a>b || c>d){
+  alert("مقدار شروع نباید بزرگ‌تر از مقدار پایان باشد.");
+  return;
+ }
+
+ if(Math.max(Math.abs(a),Math.abs(b),Math.abs(c),Math.abs(d))>1000000){
+  alert("اعداد بیش از حد بزرگ هستند.");
+  return;
+ }
+
+ const mode=document.getElementById("graphMode").value;
+ const type=determineShape(a,b,c,d,mode);
+
+ if(type==="rectangle" && (a===b || c===d)){
+  alert("برای رسم مستطیل یا مربع، هر دو بازه باید طول داشته باشند.");
+  return;
+ }
+ if(type==="horizontal" && (a===b || c!==d)){
+  alert("برای پاره‌خط افقی، X باید متغیر و Y ثابت باشد.");
+  return;
+ }
+ if(type==="vertical" && (c===d || a!==b)){
+  alert("برای پاره‌خط عمودی، Y باید متغیر و X ثابت باشد.");
+  return;
+ }
+ if(type==="point" && (a!==b || c!==d)){
+  alert("برای رسم نقطه، هر دو بازه باید ثابت باشند.");
+  return;
+ }
+
+ lastGraph={a,b,c,d,type};
+
+ const W=700,H=500;
+ const margin=55;
+
+ let cx=(a+b)/2;
+ let cy=(c+d)/2;
+
+ let rx=Math.max(b-a,2)/zoomLevel;
+ let ry=Math.max(d-c,2)/zoomLevel;
+
+ let scale=Math.min(
+  (W-2*margin)/rx,
+  (H-2*margin)/ry
+ );
+
+ let ox=W/2-cx*scale;
+ let oy=H/2+cy*scale;
+
+ function X(v){return ox+v*scale}
+ function Y(v){return oy-v*scale}
+
+ let html=`<rect width="700" height="500" fill="white"/>`;
+
+ let step=10**Math.floor(Math.log10(Math.max(rx,ry)/10));
+ if(!Number.isFinite(step)||step<=0)step=1;
+ step*=Math.ceil(1/step);
+
+ for(let v=Math.ceil((cx-rx/2)/step)*step;
+ v<=cx+rx/2;v+=step){
+
+  html+=`<line x1="${X(v)}" y1="0"
+  x2="${X(v)}" y2="500" stroke="#e5e7eb"/>`;
+
+  if(Math.abs(v)<1000000){
+   html+=`<text x="${X(v)}" y="${Math.min(oy+18,485)}"
+   text-anchor="middle" fill="#334155" font-size="12">${fa(v)}</text>`;
+  }
+ }
+
+ for(let v=Math.ceil((cy-ry/2)/step)*step;
+ v<=cy+ry/2;v+=step){
+
+  html+=`<line x1="0" y1="${Y(v)}"
+  x2="700" y2="${Y(v)}" stroke="#e5e7eb"/>`;
+
+  html+=`<text x="${Math.max(ox-10,15)}"
+  y="${Y(v)+4}" text-anchor="end"
+  fill="#334155" font-size="12">${fa(v)}</text>`;
+ }
+
+ // محورهای مختصات
+ if(cy-ry/2<=0 && cy+ry/2>=0){
+  html+=`<line x1="0" y1="${Y(0)}"
+  x2="700" y2="${Y(0)}"
+  stroke="#111827" stroke-width="2"/>`;
+ }
+
+ if(cx-rx/2<=0 && cx+rx/2>=0){
+  html+=`<line x1="${X(0)}" y1="0"
+  x2="${X(0)}" y2="500"
+  stroke="#111827" stroke-width="2"/>`;
+ }
+
+ html+=`<text x="680" y="485" fill="#111827" font-weight="bold">X</text>`;
+ html+=`<text x="${Math.max(ox+10,15)}" y="20"
+ fill="#111827" font-weight="bold">Y</text>`;
+
+ // رسم شکل
+ if(type==="rectangle"){
+  html+=`<rect x="${X(a)}" y="${Y(d)}"
+  width="${(b-a)*scale}" height="${(d-c)*scale}"
+  fill="#14b8a6" fill-opacity=".3"
+  stroke="#0d9488" stroke-width="3"/>`;
+ }
+
+ else if(type==="horizontal"){
+  html+=`<line x1="${X(a)}" y1="${Y(c)}"
+  x2="${X(b)}" y2="${Y(c)}"
+  stroke="#0d9488" stroke-width="5"/>`;
+ }
+
+ else if(type==="vertical"){
+  html+=`<line x1="${X(a)}" y1="${Y(c)}"
+  x2="${X(a)}" y2="${Y(d)}"
+  stroke="#0d9488" stroke-width="5"/>`;
+ }
+
+ else{
+  html+=`<circle cx="${X(a)}" cy="${Y(c)}"
+  r="7" fill="#e11d48"/>`;
+ }
+
+ // نقاط انتهایی
+ let points=type==="rectangle"
+ ?[[a,c],[a,d],[b,c],[b,d]]
+ :type==="horizontal"
+ ?[[a,c],[b,c]]
+ :type==="vertical"
+ ?[[a,c],[a,d]]
+ :[[a,c]];
+
+ points.forEach(p=>{
+  html+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}"
+  r="4" fill="#0f766e"/>`;
+ });
+
+ svg.innerHTML=html;
+
+ generateSolution(a,b,c,d,type);
+}
+
+function generateSolution(a,b,c,d,type){
+
+ const name=shapeName(type,a,b,c,d);
+
+ document.getElementById("solution").style.display="block";
+
+ document.getElementById("question").innerHTML=`
+ <p>حاصل‌ضرب کارتزینی دو بازه زیر را رسم و نوع شکل حاصل را مشخص کنید:</p>
+ <h3 style="direction:ltr;text-align:center">
+ [${fa(a)}, ${fa(b)}] × [${fa(c)}, ${fa(d)}]
+ </h3>`;
+
+ let steps=[];
+
+ steps.push(`
+ <div class="step">
+ <b>مرحله اول: تعیین بازه‌ها</b><br>
+ محور X از ${fa(a)} تا ${fa(b)} است.<br>
+ محور Y از ${fa(c)} تا ${fa(d)} است.
+ </div>`);
+
+ steps.push(`
+ <div class="step">
+ <b>مرحله دوم: بررسی محور X</b><br>
+ ${a===b
+ ?`چون شروع و پایان X برابر ${fa(a)} است، محور X ثابت است.`
+ :`چون ${fa(a)} با ${fa(b)} برابر نیست، محور X تغییر می‌کند.`}
+ </div>`);
+
+ steps.push(`
+ <div class="step">
+ <b>مرحله سوم: بررسی محور Y</b><br>
+ ${c===d
+ ?`چون شروع و پایان Y برابر ${fa(c)} است، محور Y ثابت است.`
+ :`چون ${fa(c)} با ${fa(d)} برابر نیست، محور Y تغییر می‌کند.`}
+ </div>`);
+
+ let explanation="";
+
+ if(type==="point"){
+  explanation="هر دو محور ثابت هستند؛ بنابراین فقط یک نقطه به‌دست می‌آید.";
+ }
+ else if(type==="horizontal"){
+  explanation="X تغییر می‌کند ولی Y ثابت است؛ بنابراین پاره‌خط افقی به‌دست می‌آید.";
+ }
+ else if(type==="vertical"){
+  explanation="Y تغییر می‌کند ولی X ثابت است؛ بنابراین پاره‌خط عمودی به‌دست می‌آید.";
+ }
+ else{
+  explanation=`هر دو محور تغییر می‌کنند؛ بنابراین یک ${name} تشکیل می‌شود.`;
+ }
+
+ steps.push(`
+ <div class="step">
+ <b>مرحله چهارم: تشخیص شکل</b><br>
+ ${explanation}
+ </div>`);
+
+ steps.push(`
+ <div class="step">
+ <b>مرحله پنجم: نتیجه</b><br>
+ نوع شکل حاصل: <span class="answer">${name}</span>
+ </div>`);
+
+ document.getElementById("steps").innerHTML=steps.join("");
+
+ document.getElementById("finalAnswer").innerHTML=
+ `جواب نهایی: ${name}`;
+}
+
+function resetGraph(){
+ document.getElementById("xmin").value=0;
+ document.getElementById("xmax").value=4;
+ document.getElementById("ymin").value=0;
+ document.getElementById("ymax").value=2;
+ document.getElementById("graphMode").value="auto";
+ zoomLevel=1;
+ drawGraph();
+}
+
+function zoom(factor){
+ zoomLevel*=factor;
+ drawGraph();
+}
+
+// تبدیل گراف SVG به تصویر
+async function getCanvas(){
+
+ const svgText=new XMLSerializer().serializeToString(svg);
+
+ const blob=new Blob([svgText],{
+  type:"image/svg+xml;charset=utf-8"
+ });
+
+ const url=URL.createObjectURL(blob);
+
+ try{
+  const img=new Image();
+
+  await new Promise((resolve,reject)=>{
+   img.onload=resolve;
+   img.onerror=reject;
+   img.src=url;
+  });
+
+  const canvas=document.createElement("canvas");
+  canvas.width=1400;
+  canvas.height=1000;
+
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="white";
+  ctx.fillRect(0,0,1400,1000);
+  ctx.drawImage(img,0,0,1400,1000);
+
+  return canvas;
+ }finally{
+  URL.revokeObjectURL(url);
+ }
+}
+
+function downloadBlob(blob,name){
+ const url=URL.createObjectURL(blob);
+ const link=document.createElement("a");
+ link.href=url;
+ link.download=name;
+ link.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+// ساخت فایل ICO واقعی با تصویر 32 بیتی
+function createICO(canvas){
+
+ const ctx=canvas.getContext("2d");
+ const size=256;
+
+ const temp=document.createElement("canvas");
+ temp.width=size;
+ temp.height=size;
+ temp.getContext("2d").drawImage(canvas,0,0,size,size);
+
+ const pixels=temp.getContext("2d").getImageData(0,0,size,size).data;
+
+ const headerSize=40;
+ const pixelSize=size*size*4;
+ const maskSize=size*Math.ceil(size/32)*4;
+ const bmpSize=headerSize+pixelSize+maskSize;
+
+ const bmp=new ArrayBuffer(bmpSize);
+ const view=new DataView(bmp);
+ const bytes=new Uint8Array(bmp);
+
+ view.setUint32(0,headerSize,true);
+ view.setInt32(4,size,true);
+ view.setInt32(8,size*2,true);
+ view.setUint16(12,1,true);
+ view.setUint16(14,32,true);
+ view.setUint32(16,0,true);
+ view.setUint32(20,pixelSize+maskSize,true);
+
+ let offset=headerSize;
+
+ for(let y=size-1;y>=0;y--){
+  for(let x=0;x<size;x++){
+   let i=(y*size+x)*4;
+   bytes[offset++]=pixels[i+2];
+   bytes[offset++]=pixels[i+1];
+   bytes[offset++]=pixels[i];
+   bytes[offset++]=pixels[i+3];
+  }
+ }
+
+ const ico=new ArrayBuffer(22+bmpSize);
+ const iv=new DataView(ico);
+ const out=new Uint8Array(ico);
+
+ iv.setUint16(0,0,true);
+ iv.setUint16(2,1,true);
+ iv.setUint16(4,1,true);
+ out[6]=0;
+ out[7]=0;
+ out[8]=0;
+ out[9]=0;
+ iv.setUint16(10,1,true);
+ iv.setUint16(12,32,true);
+ iv.setUint32(14,bmpSize,true);
+ iv.setUint32(18,22,true);
+ out.set(bytes,22);
+
+ return new Blob([ico],{type:"image/x-icon"});
+}
+
+async function exportGraph(){
+
+ if(!lastGraph){
+  alert("ابتدا گراف را ترسیم کنید.");
+  return;
+ }
+
+ const canvas=await getCanvas();
+
+ let name=document.getElementById("filename").value.trim();
+ if(!name)name="math_graph";
+ name=name.replace(/[\/:*?"<>|]/g,"_");
+
+ const format=document.getElementById("format").value;
+
+ try{
+
+  if(format==="png"){
+   canvas.toBlob(blob=>{
+    if(blob)downloadBlob(blob,name+".png");
+   },"image/png");
+  }
+
+  else if(format==="jpg"){
+   canvas.toBlob(blob=>{
+    if(blob)downloadBlob(blob,name+".jpg");
+   },"image/jpeg",0.95);
+  }
+
+  else if(format==="pdf"){
+
+   if(!window.jspdf){
+    alert("کتابخانه PDF بارگذاری نشده است. اتصال اینترنت را بررسی کنید.");
+    return;
+   }
+
+   const {jsPDF}=window.jspdf;
+
+   const pdf=new jsPDF({
+    orientation:"landscape",
+    unit:"mm",
+    format:"a4"
+   });
+
+   const img=canvas.toDataURL("image/jpeg",0.95);
+
+   pdf.addImage(img,"JPEG",10,10,277,197);
+   pdf.save(name+".pdf");
+  }
+
+  else if(format==="ico"){
+   downloadBlob(createICO(canvas),name+".ico");
+  }
+
+ }catch(error){
+  console.error(error);
+  alert("ذخیره فایل انجام نشد. لطفاً دوباره تلاش کنید.");
+ }
+}
+
+drawGraph();
+
+</script>
+</body>
+</html>
